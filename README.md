@@ -1,16 +1,123 @@
-# React + Vite
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+# 📡 OpenAir
 
-Currently, two official plugins are available:
+**OpenAir** is a modern, open-source platform for watching free live TV channels from around the world.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+What makes OpenAir unique is its "database" — there is no backend server. All channel lists are maintained in simple **Markdown (`.md`) files**. This makes it incredibly easy for the community to add new channels, update links, or fix broken streams via a simple Pull Request.
 
-## React Compiler
+built with ⚡ **Vite**, ⚛️ **React**, and 🎨 **Tailwind CSS**.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## ✨ Features
 
-## Expanding the ESLint configuration
+- **Global Coverage:** Watch channels from India, Argentina, Australia, and more.
+- **Hybrid Player:** Supports both HLS (`.m3u8`) streams and YouTube Live streams seamlessly.
+- **Markdown Powered:** Channel data is parsed directly from human-readable Markdown tables.
+- **Blazing Fast:** Built on Vite for instant loading and performance.
+- **Responsive:** Works on Mobile, Desktop, and TV Browsers.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## 🚀 Getting Started
+
+### Prerequisites
+- Node.js (v16 or higher)
+- npm or yarn
+
+### Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone [https://github.com/yourusername/open-air.git](https://github.com/yourusername/open-air.git)
+   cd open-air
+
+```
+
+2. **Install dependencies**
+```bash
+npm install
+
+```
+
+
+3. **Run the development server**
+```bash
+npm run dev
+
+```
+
+
+4. Open your browser and navigate to `http://localhost:5173`.
+
+## 📺 How to Add Channels
+
+The beauty of OpenAir is how easy it is to add channels.
+
+### 1. The File Structure
+
+Channel lists are located in the `public/channels/` directory.
+
+* `india.md`
+* `brazil.md`
+* `argentina.md`
+
+### 2. The Data Format
+
+We use a standard Markdown table format. To add a channel, simply append a row to the existing table in the country's file.
+
+**Format:**
+
+```markdown
+| # | Channel Name | Link | Logo | EPG id |
+|:-:|:------------:|:----:|:----:|:------:|
+| 1 | Channel Name | [>](STREAM_URL) | <img src="LOGO_URL" /> | ID |
+
+```
+
+**Example:**
+
+```markdown
+| 1 | DD News | [>](https://www.youtube.com/c/ddnews/live) | <img height="20" src="[https://i.imgur.com/logo.png](https://i.imgur.com/logo.png)" /> | DDNews.in |
+
+```
+
+### 3. Adding a New Country
+
+1. Create a new file (e.g., `france.md`) in `public/channels/`.
+2. Add your table of channels.
+3. Update `public/channels/manifest.json` to register the new file:
+```json
+[
+  ...
+  { "id": "france", "name": "France", "file": "france.md" }
+]
+
+```
+
+
+
+## 🛠️ Tech Stack
+
+* **Framework:** [React](https://react.dev/)
+* **Build Tool:** [Vite](https://vitejs.dev/)
+* **Styling:** [Tailwind CSS](https://tailwindcss.com/)
+* **Video Player:** [React Player](https://github.com/cookpete/react-player)
+* **Icons:** [Lucide React](https://lucide.dev/)
+
+## 🤝 Contributing
+
+Contributions are what keep this project alive!
+
+1. Fork the project.
+2. Create your feature branch (`git checkout -b feature/NewChannels`).
+3. Commit your changes (`git commit -m 'Add new channels for Japan'`).
+4. Push to the branch (`git push origin feature/NewChannels`).
+5. Open a Pull Request.
+
+## ⚠️ Disclaimer
+
+This project is a link aggregator. **OpenAir does not host any streams or content.** All streams are pulled from public sources available on the internet.
+
+* If a channel is down, it is likely an issue with the source stream, not the app.
+* We do not condone piracy. Only free-to-air (FTA) or publicly available streams should be added.
+
+## 📄 License
+
+Distributed under the MIT License. See `LICENSE` for more information.
