@@ -1,11 +1,10 @@
-
 # 📡 OpenAir
 
 **OpenAir** is a modern, open-source platform for watching free live TV channels from around the world.
 
 What makes OpenAir unique is its "database" — there is no backend server. All channel lists are maintained in simple **Markdown (`.md`) files**. This makes it incredibly easy for the community to add new channels, update links, or fix broken streams via a simple Pull Request.
 
-built with ⚡ **Vite**, ⚛️ **React**, and 🎨 **Tailwind CSS**.
+Built with ⚡ **Vite**, ⚛️ **React**, and 🎨 **Tailwind CSS**.
 
 ## ✨ Features
 
@@ -14,6 +13,18 @@ built with ⚡ **Vite**, ⚛️ **React**, and 🎨 **Tailwind CSS**.
 - **Markdown Powered:** Channel data is parsed directly from human-readable Markdown tables.
 - **Blazing Fast:** Built on Vite for instant loading and performance.
 - **Responsive:** Works on Mobile, Desktop, and TV Browsers.
+
+## 📺 Data Source & Attribution
+
+All channel data, playlists, and country lists are sourced directly from the amazing **[Free-TV/IPTV](https://github.com/Free-TV/IPTV)** repository.
+
+This project acts as a modern web interface for that dataset. We strictly adhere to their philosophy:
+- **Quality over Quantity:** Focus on working, high-quality streams.
+- **Only Free Channels:** No paid subscriptions or pirated content.
+- **Mainstream Content:** No adult, religious, or political propaganda channels.
+
+The raw channel lists are fetched live from:
+`https://github.com/Free-TV/IPTV/tree/master/lists`
 
 ## 🚀 Getting Started
 
@@ -46,13 +57,15 @@ npm run dev
 
 4. Open your browser and navigate to `http://localhost:5173`.
 
+> **Note for Developers:** If you are testing HLS streams (m3u8) on localhost, you may need a **CORS Extension** enabled in your browser, as many TV stations block localhost requests.
+
 ## 📺 How to Add Channels
 
 The beauty of OpenAir is how easy it is to add channels.
 
 ### 1. The File Structure
 
-Channel lists are located in the `public/channels/` directory.
+Channel lists are located in the `public/channels/` directory (or fetched remotely).
 
 * `india.md`
 * `brazil.md`
@@ -113,7 +126,7 @@ Contributions are what keep this project alive!
 
 ## ⚠️ Disclaimer
 
-This project is a link aggregator. **OpenAir does not host any streams or content.** All streams are pulled from public sources available on the internet.
+This project is a link aggregator and a web interface. **OpenAir does not host any streams or content.** All streams are pulled from public sources available on the internet.
 
 * If a channel is down, it is likely an issue with the source stream, not the app.
 * We do not condone piracy. Only free-to-air (FTA) or publicly available streams should be added.
@@ -121,3 +134,4 @@ This project is a link aggregator. **OpenAir does not host any streams or conten
 ## 📄 License
 
 Distributed under the MIT License. See `LICENSE` for more information.
+

@@ -1,23 +1,70 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import ReactPlayer from 'react-player';
-import { Menu, Tv, Search, Play, RotateCcw, Monitor, AlertCircle, VolumeX } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import Hls from 'hls.js';
+import { Menu, Tv, Search, Play, RotateCcw, Monitor, AlertCircle, Volume2, VolumeX, Pause, X, Radio, Wifi, ExternalLink, Youtube, Maximize, Minimize } from 'lucide-react';
 import { parseMarkdownTable } from './utils/markdownParser';
+import './App.css';
+
+// Helper function to extract YouTube embed URL
+const getYouTubeEmbedUrl = (url) => {
+  // Handle various YouTube URL formats
+  // https://www.youtube.com/watch?v=VIDEO_ID
+  // https://www.youtube.com/c/CHANNEL/live
+  // https://www.youtube.com/@CHANNEL/live
+  // https://www.youtube.com/CHANNEL/live
+  // https://youtu.be/VIDEO_ID
+
+  let embedUrl = '';
+
+  // Check for watch?v= format (direct video)
+  const watchMatch = url.match(/[?&]v=([^&]+)/);
+  if (watchMatch) {
+    embedUrl = `https://www.youtube.com/embed/${watchMatch[1]}?autoplay=1&mute=1&playsinline=1`;
+    return embedUrl;
+  }
+
+  // Check for youtu.be short URL
+  const shortMatch = url.match(/youtu\.be\/([^?&]+)/);
+  if (shortMatch) {
+    embedUrl = `https://www.youtube.com/embed/${shortMatch[1]}?autoplay=1&mute=1&playsinline=1`;
+    return embedUrl;
+  }
+
+  // For channel live streams, we need to use a different approach
+  // Extract channel name/id from URL patterns like:
+  // /c/channelname/live, /@channelname/live, /channelname/live
+  const liveMatch = url.match(/youtube\.com\/(c\/|@)?([^\/]+)\/live/i);
+  if (liveMatch) {
+    const channelName = liveMatch[2];
+    // For live channel URLs, we'll use the channel embed with live parameter
+    // This requires the channel's video ID which we don't have, so we return null
+    // and handle it differently (open in new tab)
+    return null; // Can't embed channel live streams directly
+  }
+
+  return null;
+};
 
 function App() {
   const [countries, setCountries] = useState([]);
   const [selectedCountry, setSelectedCountry] = useState(null);
-  
+
   const [channels, setChannels] = useState([]);
   const [activeChannel, setActiveChannel] = useState(null);
-  
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [playerError, setPlayerError] = useState(false);
-  
-  // State for Autoplay/Mute handling
+  const [isBuffering, setIsBuffering] = useState(false);
+
+  // Video player states
   const [isMuted, setIsMuted] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const videoRef = useRef(null);
+  const hlsRef = useRef(null);
+  const containerRef = useRef(null);
 
   // 1. Load Country List (Manifest)
   useEffect(() => {
@@ -25,7 +72,7 @@ function App() {
       .then(res => res.json())
       .then(data => {
         setCountries(data);
-        if(data.length > 0) setSelectedCountry(data[0]);
+        if (data.length > 0) setSelectedCountry(data[0]);
       })
       .catch(err => console.error("Manifest Error:", err));
   }, []);
@@ -36,17 +83,20 @@ function App() {
 
     setIsLoading(true);
     setChannels([]);
-    setSearchQuery(''); 
+    setSearchQuery('');
 
-    fetch(`/channels/${selectedCountry.file}`)
+    fetch(`https://raw.githubusercontent.com/Free-TV/IPTV/master/lists/${selectedCountry.file}`)
       .then(res => res.text())
       .then(text => {
         const parsed = parseMarkdownTable(text);
         setChannels(parsed);
         setIsLoading(false);
 
-        // Auto-select first channel if available
-        if (parsed.length > 0) {
+        // Auto-select first non-YouTube channel if available
+        const firstHlsChannel = parsed.find(ch => !ch.isYoutube);
+        if (firstHlsChannel) {
+          handleChannelSelect(firstHlsChannel);
+        } else if (parsed.length > 0) {
           handleChannelSelect(parsed[0]);
         } else {
           setActiveChannel(null);
@@ -58,17 +108,195 @@ function App() {
       });
   }, [selectedCountry]);
 
-  const handleChannelSelect = (channel) => {
-    // Reset error state immediately
-    console.log("Selected:", channel.name);
+  // 3. Initialize HLS player when channel changes (only for non-YouTube)
+  useEffect(() => {
+    if (!activeChannel || activeChannel.isYoutube) return;
+    if (!videoRef.current) return;
+
+    const video = videoRef.current;
+    const url = activeChannel.url;
+
+    // Cleanup previous HLS instance
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+
+    setPlayerError(false);
+    setIsBuffering(true);
+
+    // Check if it's an HLS stream
+    if (url.includes('.m3u8')) {
+      if (Hls.isSupported()) {
+        const hls = new Hls({
+          enableWorker: true,
+          lowLatencyMode: true,
+          xhrSetup: (xhr) => {
+            xhr.withCredentials = false;
+          }
+        });
+
+        hls.loadSource(url);
+        hls.attachMedia(video);
+
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          setIsBuffering(false);
+          video.play().catch(console.error);
+          setIsPlaying(true);
+        });
+
+        hls.on(Hls.Events.ERROR, (event, data) => {
+          if (data.fatal) {
+            console.error('HLS Error:', data);
+            setPlayerError(true);
+            setIsBuffering(false);
+          }
+        });
+
+        hlsRef.current = hls;
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        // Safari native HLS support
+        video.src = url;
+        video.addEventListener('loadedmetadata', () => {
+          setIsBuffering(false);
+          video.play().catch(console.error);
+          setIsPlaying(true);
+        });
+      }
+    } else {
+      // Regular video file
+      video.src = url;
+      video.addEventListener('loadeddata', () => {
+        setIsBuffering(false);
+        video.play().catch(console.error);
+        setIsPlaying(true);
+      });
+    }
+
+    return () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+    };
+  }, [activeChannel]);
+
+  // Video event handlers (for non-YouTube)
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const handleWaiting = () => setIsBuffering(true);
+    const handlePlaying = () => setIsBuffering(false);
+    const handleError = () => {
+      console.error('Video Error');
+      setPlayerError(true);
+      setIsBuffering(false);
+    };
+
+    video.addEventListener('waiting', handleWaiting);
+    video.addEventListener('playing', handlePlaying);
+    video.addEventListener('error', handleError);
+
+    return () => {
+      video.removeEventListener('waiting', handleWaiting);
+      video.removeEventListener('playing', handlePlaying);
+      video.removeEventListener('error', handleError);
+    };
+  }, []);
+
+  const handleChannelSelect = useCallback((channel) => {
+    console.log("Selected:", channel.name, channel.isYoutube ? "(YouTube)" : "(HLS)");
     setPlayerError(false);
     setActiveChannel(channel);
     setIsPlaying(true);
+    setIsBuffering(false);
+    // Close sidebar on mobile
+    if (window.innerWidth < 768) {
+      setIsSidebarOpen(false);
+    }
+  }, []);
+
+  const toggleMute = () => {
+    if (videoRef.current && activeChannel && !activeChannel.isYoutube) {
+      videoRef.current.muted = !isMuted;
+      setIsMuted(!isMuted);
+    }
   };
 
-  const handleUnmute = () => {
-    setIsMuted(false);
+  const togglePlay = () => {
+    if (videoRef.current && activeChannel && !activeChannel.isYoutube) {
+      if (isPlaying) {
+        videoRef.current.pause();
+      } else {
+        videoRef.current.play().catch(console.error);
+      }
+      setIsPlaying(!isPlaying);
+    }
   };
+
+  const retryConnection = () => {
+    if (activeChannel) {
+      const temp = activeChannel;
+      setActiveChannel(null);
+      setTimeout(() => {
+        setActiveChannel(temp);
+      }, 100);
+    }
+  };
+
+  const openInNewTab = (url) => {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const toggleFullscreen = () => {
+    if (!containerRef.current) return;
+
+    if (!document.fullscreenElement) {
+      // Enter fullscreen
+      if (containerRef.current.requestFullscreen) {
+        containerRef.current.requestFullscreen();
+      } else if (containerRef.current.webkitRequestFullscreen) {
+        containerRef.current.webkitRequestFullscreen();
+      } else if (containerRef.current.msRequestFullscreen) {
+        containerRef.current.msRequestFullscreen();
+      }
+      setIsFullscreen(true);
+    } else {
+      // Exit fullscreen
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      } else if (document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+      } else if (document.msExitFullscreen) {
+        document.msExitFullscreen();
+      }
+      setIsFullscreen(false);
+    }
+  };
+
+  // Listen for fullscreen change events
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
+  // Get YouTube embed URL for the current channel
+  const youtubeEmbedUrl = useMemo(() => {
+    if (activeChannel?.isYoutube) {
+      return getYouTubeEmbedUrl(activeChannel.url);
+    }
+    return null;
+  }, [activeChannel]);
 
   // Filter Channels based on Search
   const filteredChannels = useMemo(() => {
@@ -86,223 +314,316 @@ function App() {
     return groups;
   }, [filteredChannels]);
 
-  return (
-    <div className="flex h-screen bg-[#0f0f0f] text-gray-100 font-sans overflow-hidden selection:bg-red-900 selection:text-white">
-      
-      {/* SIDEBAR */}
-      <aside className={`${isSidebarOpen ? 'w-64 translate-x-0' : 'w-0 -translate-x-full'} transition-all duration-300 bg-[#121212] border-r border-white/10 flex flex-col absolute md:relative z-20 h-full`}>
-        <div className="p-5 flex items-center gap-3 border-b border-white/5 bg-[#181818]">
-          <div className="bg-red-600 p-1.5 rounded-lg shadow-[0_0_15px_rgba(220,38,38,0.5)]">
-            <Tv size={20} className="text-white" />
+  // Render player content based on channel type
+  const renderPlayer = () => {
+    if (!activeChannel) {
+      return (
+        <div className="no-channel-overlay">
+          <div className="no-channel-content">
+            <div className="no-channel-icon">
+              <Monitor size={48} />
+            </div>
+            <h3>Welcome to Open Air</h3>
+            <p>Select a channel from the list below to start watching</p>
           </div>
-          <h1 className="font-bold text-lg tracking-wide bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">OPEN AIR</h1>
         </div>
-        
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 px-3 mt-4">Countries</div>
-          {countries.map(country => (
-            <button
-              key={country.id}
-              onClick={() => { setSelectedCountry(country); if(window.innerWidth < 768) setIsSidebarOpen(false); }}
-              className={`w-full text-left px-4 py-3 rounded-lg mb-1 transition-all flex items-center gap-3
-                ${selectedCountry?.id === country.id 
-                  ? 'bg-red-600/10 text-red-500 border border-red-600/20' 
-                  : 'hover:bg-white/5 text-gray-400 hover:text-white'}`}
-            >
-              <img 
-                src={`https://flagcdn.com/24x18/${country.id === 'india' ? 'in' : country.id === 'australia' ? 'au' : 'un'}.png`}
-                className="w-5 h-3.5 rounded-sm object-cover opacity-80"
-                alt=""
-                onError={(e) => e.target.style.display = 'none'}
-              />
-              <span className="font-medium text-sm">{country.name}</span>
+      );
+    }
+
+    if (playerError) {
+      return (
+        <div className="error-overlay">
+          <div className="error-content">
+            <div className="error-icon">
+              <AlertCircle size={40} />
+            </div>
+            <h3>Stream Unavailable</h3>
+            <p>This channel is currently offline or restricted.</p>
+            <button onClick={retryConnection} className="retry-button">
+              <RotateCcw size={16} />
+              <span>Retry Connection</span>
             </button>
-          ))}
+          </div>
+        </div>
+      );
+    }
+
+    // YouTube channel handling
+    if (activeChannel.isYoutube) {
+      if (youtubeEmbedUrl) {
+        // Embeddable YouTube video
+        return (
+          <div className="video-wrapper">
+            <iframe
+              src={youtubeEmbedUrl}
+              className="youtube-player"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+              title={activeChannel.name}
+            />
+          </div>
+        );
+      } else {
+        // YouTube live channel (can't be embedded directly)
+        return (
+          <div className="youtube-external-overlay">
+            <div className="youtube-external-content">
+              <div className="youtube-icon">
+                <Youtube size={48} />
+              </div>
+              <h3>{activeChannel.name}</h3>
+              <p>This YouTube live stream needs to be opened in a new tab</p>
+              <button
+                onClick={() => openInNewTab(activeChannel.url)}
+                className="open-youtube-btn"
+              >
+                <ExternalLink size={18} />
+                <span>Watch on YouTube</span>
+              </button>
+            </div>
+          </div>
+        );
+      }
+    }
+
+    // HLS/Regular video player
+    return (
+      <div className="video-wrapper" ref={containerRef}>
+        <video
+          ref={videoRef}
+          className="video-player"
+          playsInline
+          muted={isMuted}
+          autoPlay
+          onClick={togglePlay}
+        />
+
+        {/* Buffering Indicator */}
+        {isBuffering && (
+          <div className="buffering-overlay">
+            <div className="buffering-spinner" />
+            <span>Loading stream...</span>
+          </div>
+        )}
+
+        {/* Video Controls Overlay */}
+        <div className="video-controls">
+          <div className="controls-left">
+            <button onClick={togglePlay} className="control-btn play-btn">
+              {isPlaying ? <Pause size={20} /> : <Play size={20} />}
+            </button>
+
+            <button onClick={toggleMute} className="control-btn mute-btn">
+              {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+              {isMuted && <span className="unmute-hint">Tap to unmute</span>}
+            </button>
+          </div>
+
+          <div className="controls-right">
+            <button onClick={toggleFullscreen} className="control-btn fullscreen-btn">
+              {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="app-container">
+      {/* Mobile Overlay when sidebar is open */}
+      {isSidebarOpen && (
+        <div
+          className="sidebar-overlay"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
+      {/* SIDEBAR */}
+      <aside className={`sidebar ${isSidebarOpen ? 'open' : ''}`}>
+        <div className="sidebar-header">
+          <div className="logo-container">
+            <div className="logo-icon">
+              <Tv size={18} />
+            </div>
+            <h1 className="logo-text">OPEN AIR</h1>
+          </div>
+          <button
+            className="close-sidebar-btn"
+            onClick={() => setIsSidebarOpen(false)}
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="sidebar-content">
+          <div className="sidebar-section-title">
+            <Radio size={12} />
+            <span>Countries</span>
+          </div>
+
+          <div className="country-list">
+            {countries.map(country => (
+              <button
+                key={country.id}
+                onClick={() => {
+                  setSelectedCountry(country);
+                  if (window.innerWidth < 768) setIsSidebarOpen(false);
+                }}
+                className={`country-button ${selectedCountry?.id === country.id ? 'active' : ''}`}
+              >
+                <img
+                  src={`https://flagcdn.com/24x18/${country.code}.png`}
+                  className="country-flag"
+                  alt={country.name}
+                  onError={(e) => e.target.style.display = 'none'}
+                />
+                <span className="country-name">{country.name}</span>
+                {selectedCountry?.id === country.id && (
+                  <span className="active-indicator" />
+                )}
+              </button>
+            ))}
+          </div>
         </div>
       </aside>
 
       {/* MAIN CONTENT */}
-      <main className="flex-1 flex flex-col relative w-full">
-        
-        {/* Top Navigation */}
-        <header className="h-16 bg-[#121212] border-b border-white/10 flex items-center px-4 justify-between shrink-0 z-10">
-          <div className="flex items-center gap-4">
-            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
-              <Menu size={20} />
+      <main className="main-content">
+        {/* Header */}
+        <header className="header">
+          <div className="header-left">
+            <button
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              className="menu-button"
+            >
+              <Menu size={22} />
             </button>
-            <div className="flex flex-col">
-               <span className="text-xs text-gray-500 font-mono">LIVE FEED</span>
-               <span className="text-sm font-bold text-white flex items-center gap-2">
-                 {activeChannel ? activeChannel.name : 'No Channel Selected'}
-                 {activeChannel && <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>}
-               </span>
+
+            <div className="current-channel-info">
+              <div className="live-badge">
+                <span className="live-dot" />
+                <span>LIVE</span>
+                {activeChannel?.isYoutube && (
+                  <span className="yt-live-badge">
+                    <Youtube size={10} />
+                    YT
+                  </span>
+                )}
+              </div>
+              <span className="channel-name">
+                {activeChannel ? activeChannel.name : 'Select a channel'}
+              </span>
             </div>
           </div>
-          
-          <div className="relative hidden md:block w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-            <input 
-              type="text" 
-              placeholder="Search channels..." 
+
+          <div className="search-container desktop-only">
+            <Search size={16} className="search-icon" />
+            <input
+              type="text"
+              placeholder="Search channels..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-[#1e1e1e] border border-white/10 rounded-full py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-red-500/50 focus:ring-1 focus:ring-red-500/50 transition-all placeholder:text-gray-600"
+              className="search-input"
             />
+          </div>
+
+          <div className="header-right">
+            <div className="connection-status">
+              <Wifi size={14} />
+            </div>
           </div>
         </header>
 
-        {/* Video Player Section */}
-        <div className="w-full bg-black aspect-video max-h-[55vh] relative group shadow-2xl z-0">
-          {activeChannel ? (
-            <>
-              {playerError ? (
-                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0a0a0a] text-gray-400 gap-4">
-                    <AlertCircle size={48} className="text-red-500 mb-2" />
-                    <p>Stream unavailable or offline.</p>
-                    <button 
-                      onClick={() => setPlayerError(false)} 
-                      className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-md text-sm flex items-center gap-2 transition-colors"
-                    >
-                      <RotateCcw size={16} /> Retry Connection
-                    </button>
-                 </div>
-              ) : (
-                <div className="w-full h-full relative">
-                    <ReactPlayer
-                      key={activeChannel.url}
-                      url={activeChannel.url}
-                      playing={isPlaying}
-                      muted={isMuted} // Muted by default to satisfy browser autoplay policies
-                      controls={true}
-                      width="100%"
-                      height="100%"
-                      pip={false} 
-                      stopOnUnmount={true}
-                      // ERROR HANDLING
-                      onError={(e) => {
-                        // 1. Ignore "AbortError" (User switched channel while loading)
-                        if (e?.name === 'AbortError' || e?.message?.includes('interrupted')) {
-                            return; 
-                        }
-                        console.error("Player Error:", e);
-                        
-                        // 2. Warn if it's likely a CORS issue
-                        if (!activeChannel.isYoutube) {
-                            console.warn("BLANK SCREEN FIX: Ensure you installed 'hls.js' and have the 'Allow CORS' extension ON.");
-                        }
-                        setPlayerError(true);
-                      }}
-                      // CONFIGURATION
-                      config={{
-                        file: { 
-                          forceHLS: !activeChannel.isYoutube, // Force HLS for .m3u8
-                          hlsOptions: {
-                            forceHLS: true,
-                            enableWorker: true,
-                            lowLatencyMode: true,
-                            xhrSetup: function(xhr, url) {
-                              xhr.withCredentials = false; // Helps bypass some strict CORS checks
-                            }
-                          }
-                        },
-                        youtube: { playerVars: { showinfo: 1, autoplay: 1, playsinline: 1 } }
-                      }}
-                    />
-                    
-                    {/* Unmute Overlay */}
-                    {isMuted && !playerError && (
-                        <button 
-                            onClick={handleUnmute}
-                            className="absolute top-4 right-4 bg-black/60 hover:bg-red-600 text-white p-2 rounded-full backdrop-blur-sm transition-all flex items-center gap-2 pr-4 group z-20"
-                        >
-                            <VolumeX size={20} />
-                            <span className="text-xs font-bold">CLICK TO UNMUTE</span>
-                        </button>
-                    )}
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#050505]">
-              <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-6 animate-pulse">
-                <Monitor size={40} className="text-white/20" />
-              </div>
-              <p className="text-gray-500 font-light">Select a channel to start watching</p>
-            </div>
-          )}
+        {/* Video Player */}
+        <div className="player-section" ref={containerRef}>
+          {renderPlayer()}
         </div>
 
         {/* Channel Grid */}
-        <div className="flex-1 overflow-y-auto bg-[#0f0f0f] p-4 md:p-6 custom-scrollbar">
-          {isLoading ? (
-             <div className="flex flex-col items-center justify-center h-40 gap-3 text-gray-500">
-                <div className="w-6 h-6 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
-                <span className="text-sm">Fetching frequencies...</span>
-             </div>
-          ) : (
-            <>
-             {/* Mobile Search */}
-             <div className="md:hidden mb-6 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-                <input 
-                  type="text" 
-                  placeholder="Search..." 
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-[#1e1e1e] border border-white/10 rounded-lg py-3 pl-10 text-sm"
-                />
-             </div>
+        <div className="channel-section">
+          {/* Mobile Search */}
+          <div className="mobile-search">
+            <Search size={16} className="search-icon" />
+            <input
+              type="text"
+              placeholder="Search channels..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="search-input"
+            />
+          </div>
 
+          {isLoading ? (
+            <div className="loading-container">
+              <div className="loading-spinner" />
+              <span>Loading channels...</span>
+            </div>
+          ) : (
+            <div className="channel-grid-container">
               {Object.keys(groupedChannels).length === 0 && (
-                <div className="text-center text-gray-500 py-10">No channels found.</div>
+                <div className="no-results">
+                  <p>No channels found</p>
+                </div>
               )}
 
               {Object.entries(groupedChannels).map(([category, chans]) => (
-                <div key={category} className="mb-8">
-                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-2">
-                    <span className="w-1 h-4 bg-red-600 rounded-full"></span>
+                <div key={category} className="category-section">
+                  <h3 className="category-title">
+                    <span className="category-accent" />
                     {category}
+                    <span className="channel-count">{chans.length}</span>
                   </h3>
-                  
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
+
+                  <div className="channel-grid">
                     {chans.map((channel, idx) => (
-                      <div 
+                      <div
                         key={`${channel.id}-${idx}`}
                         onClick={() => handleChannelSelect(channel)}
-                        className={`
-                          group relative flex items-center gap-3 p-3 rounded-xl cursor-pointer border transition-all duration-200
-                          ${activeChannel?.url === channel.url 
-                            ? 'bg-red-600/10 border-red-600/50 ring-1 ring-red-600/50' 
-                            : 'bg-[#181818] border-white/5 hover:border-white/20 hover:bg-[#202020] hover:-translate-y-0.5 shadow-sm'}
-                        `}
+                        className={`channel-card ${activeChannel?.url === channel.url ? 'active' : ''} ${channel.isYoutube ? 'youtube' : ''}`}
                       >
-                        <div className="w-12 h-10 shrink-0 bg-white rounded-md flex items-center justify-center p-1 overflow-hidden">
+                        <div className="channel-logo">
                           {channel.logo ? (
-                            <img src={channel.logo} alt={channel.name} className="max-w-full max-h-full object-contain" />
-                          ) : (
-                            <span className="text-black font-bold text-xs">{channel.id}</span>
-                          )}
+                            <img
+                              src={channel.logo}
+                              alt={channel.name}
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                                e.target.nextSibling.style.display = 'flex';
+                              }}
+                            />
+                          ) : null}
+                          <span className="logo-fallback" style={{ display: channel.logo ? 'none' : 'flex' }}>
+                            {channel.name.charAt(0)}
+                          </span>
                         </div>
 
-                        <div className="flex-1 min-w-0">
-                          <h4 className={`text-sm font-medium truncate ${activeChannel?.url === channel.url ? 'text-red-400' : 'text-gray-200'}`}>
-                            {channel.name}
-                          </h4>
-                          <div className="flex items-center gap-2 mt-0.5">
-                             {channel.isYoutube && <span className="text-[10px] bg-red-600 text-white px-1.5 rounded-sm">YT</span>}
-                             <span className="text-[10px] text-gray-500 truncate">#{channel.id}</span>
+                        <div className="channel-info">
+                          <h4 className="channel-title">{channel.name}</h4>
+                          <div className="channel-meta">
+                            {channel.isYoutube && (
+                              <span className="yt-badge">
+                                <Youtube size={8} />
+                                YT
+                              </span>
+                            )}
+                            <span className="channel-id">#{channel.id}</span>
                           </div>
                         </div>
-                        
-                        <div className="absolute right-3 opacity-0 group-hover:opacity-100 transition-opacity text-white/80">
-                           <Play size={18} fill="currentColor" />
+
+                        <div className="play-indicator">
+                          {channel.isYoutube ? (
+                            <Youtube size={14} />
+                          ) : (
+                            <Play size={14} fill="currentColor" />
+                          )}
                         </div>
                       </div>
                     ))}
                   </div>
                 </div>
               ))}
-            </>
+            </div>
           )}
         </div>
       </main>
