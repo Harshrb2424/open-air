@@ -4,9 +4,9 @@
 
 What makes OpenAir unique is its "database" — there is no backend server. All channel lists are maintained in simple **Markdown (`.md`) files**. This makes it incredibly easy for the community to add new channels, update links, or fix broken streams via a simple Pull Request.
 
-Built with ⚡ **Vite**, ⚛️ **React**, and 🎨 **Tailwind CSS**.
+Built with **Vite**, **React**, and **Tailwind CSS**.
 
-## ✨ Features
+## Features
 
 - **Global Coverage:** Watch channels from India, Argentina, Australia, and more.
 - **Hybrid Player:** Supports both HLS (`.m3u8`) streams and YouTube Live streams seamlessly.
@@ -14,7 +14,7 @@ Built with ⚡ **Vite**, ⚛️ **React**, and 🎨 **Tailwind CSS**.
 - **Blazing Fast:** Built on Vite for instant loading and performance.
 - **Responsive:** Works on Mobile, Desktop, and TV Browsers.
 
-## 📺 Data Source & Attribution
+## Data Source & Attribution
 
 All channel data, playlists, and country lists are sourced directly from the amazing **[Free-TV/IPTV](https://github.com/Free-TV/IPTV)** repository.
 
@@ -26,7 +26,7 @@ This project acts as a modern web interface for that dataset. We strictly adhere
 The raw channel lists are fetched live from:
 `https://github.com/Free-TV/IPTV/tree/master/lists`
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 - Node.js (v16 or higher)
@@ -59,7 +59,7 @@ npm run dev
 
 > **Note for Developers:** If you are testing HLS streams (m3u8) on localhost, you may need a **CORS Extension** enabled in your browser, as many TV stations block localhost requests.
 
-## 📺 How to Add Channels
+## How to Add Channels
 
 The beauty of OpenAir is how easy it is to add channels.
 
@@ -106,7 +106,7 @@ We use a standard Markdown table format. To add a channel, simply append a row t
 
 
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 * **Framework:** [React](https://react.dev/)
 * **Build Tool:** [Vite](https://vitejs.dev/)
@@ -114,7 +114,7 @@ We use a standard Markdown table format. To add a channel, simply append a row t
 * **Video Player:** [React Player](https://github.com/cookpete/react-player)
 * **Icons:** [Lucide React](https://lucide.dev/)
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are what keep this project alive!
 
@@ -124,14 +124,9 @@ Contributions are what keep this project alive!
 4. Push to the branch (`git push origin feature/NewChannels`).
 5. Open a Pull Request.
 
-## ⚠️ Disclaimer
+## Disclaimer
 
 This project is a link aggregator and a web interface. **OpenAir does not host any streams or content.** All streams are pulled from public sources available on the internet.
 
 * If a channel is down, it is likely an issue with the source stream, not the app.
 * We do not condone piracy. Only free-to-air (FTA) or publicly available streams should be added.
-
-## 📄 License
-
-Distributed under the MIT License. See `LICENSE` for more information.
-
